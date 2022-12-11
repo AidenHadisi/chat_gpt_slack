@@ -1,10 +1,10 @@
-use chat_gpt_slack::chat_gpt::api::ChatGPTApi;
+use chat_gpt_slack::prelude::*;
 
 const YOUR_SESSION_TOKEN: &'static str = "";
 
 fn main() {
-    let session = chat_gpt_slack::chat_gpt::auth::SessionToken::new(YOUR_SESSION_TOKEN);
-    let client = chat_gpt_slack::chat_gpt::api::ChatGPT::new(session);
+    let session = SessionToken::new(YOUR_SESSION_TOKEN);
+    let client = ChatGPT::new(session);
 
     let response = client.ask("Hello").unwrap();
 
