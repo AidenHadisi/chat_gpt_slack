@@ -12,17 +12,24 @@ async fn main() {
     env::var("CHAT_GPT_SESSION_TOKEN").expect("missing session token");
     let slack_token = env::var("SLACK_APP_TOKEN").expect("missing slack token");
 
-    create_slack_listener(slack_token.as_str()).await;
-    return
+    let token = env::var("CHAT_GPT_SESSION_TOKEN").expect("missing slack token");
+
+    let session = SessionToken::new(token);
+    let chat_gpt_api = ChatGPT::new(session);
+
+    create_slack_listener(slack_token.as_str(), chat_gpt_api).await;
+    return;
 }
 
-async fn create_slack_listener(token: &str) {
+async fn create_slack_listener(token: &str, chat_gpt_api: ChatGPT) {
     let client = Arc::new(SlackClient::new(SlackClientHyperConnector::new()));
 
     let socket_mode_callbacks =
         SlackSocketModeListenerCallbacks::new().with_command_events(handle_command);
 
-    let listener_environment = Arc::new(SlackClientEventsListenerEnvironment::new(client.clone()));
+    let listener_environment = Arc::new(
+        SlackClientEventsListenerEnvironment::new(client.clone()).with_user_state(chat_gpt_api),
+    );
 
     let socket_mode_listener = SlackClientSocketModeListener::new(
         &SlackClientSocketModeConfig::new(),
@@ -38,7 +45,7 @@ async fn create_slack_listener(token: &str) {
 async fn handle_command(
     e: SlackCommandEvent,
     _client: Arc<SlackHyperClient>,
-    _states: SlackClientEventsUserState,
+    chat_gpt_storage: SlackClientEventsUserState,
 ) -> Result<SlackCommandEventResponse, Box<dyn std::error::Error + Send + Sync>> {
     let Some(text) = e.text else {
         return Ok(SlackCommandEventResponse::new(
@@ -46,19 +53,18 @@ async fn handle_command(
         ))
     };
 
-    let token = env::var("CHAT_GPT_SESSION_TOKEN").expect("missing slack token");
+    let states = chat_gpt_storage.read().await;
+    let chat_gpt: &ChatGPT = states.get_user_state::<ChatGPT>().unwrap();
 
-    let session = SessionToken::new(token);
-    let chat_gpt_api = ChatGPT::new(session);
-
-    let res = chat_gpt_api.ask(&text).await;
+    let res = chat_gpt.ask(&text).await;
 
     let message = match res {
         Ok(message) => message.message.content.parts[0].clone(),
         Err(e) => e.to_string(),
     };
 
-    Ok(SlackCommandEventResponse::new(
-        SlackMessageContent::new().with_text(message.into()),
-    ))
+    Ok(
+        SlackCommandEventResponse::new(SlackMessageContent::new().with_text(message.into()))
+            .with_response_type(SlackMessageResponseType::InChannel),
+    )
 }
