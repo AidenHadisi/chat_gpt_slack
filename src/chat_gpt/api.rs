@@ -1,19 +1,22 @@
-use reqwest::{
-    blocking::Client,
-    header,
-    header::{HeaderMap, HeaderValue},
-};
-
-use super::auth::SessionToken;
+use super::auth::BearerToken;
 use super::request::Request;
 use super::Response;
 use crate::Error::ApiError;
 use crate::Result;
+use async_trait::async_trait;
+use reqwest::{
+    header,
+    header::{HeaderMap, HeaderValue},
+    Client,
+};
 
+use log::info;
+
+#[async_trait]
 ///ChatGPTApi provides a trait for api clients that can interact with ChatGPT.
 pub trait ChatGPTApi {
     ///Asks a question from ChatGPT and returns response.
-    fn ask(self, question: &str) -> Result<Response>;
+    async fn ask(&self, question: &str) -> Result<Response>;
 }
 
 ///Default ChatGPT api implementation.
@@ -33,8 +36,8 @@ impl ChatGPT {
     const ASSISTANT_APP_ID: &'static str = "";
 
     ///Creates a new instance of default ChatGPT api client.
-    pub fn new(session: SessionToken) -> Self {
-        let headers = Self::create_default_headers(session);
+    pub fn new(token: impl Into<BearerToken>) -> Self {
+        let headers = Self::create_default_headers(token.into());
         let c = Client::builder().default_headers(headers);
 
         Self {
@@ -42,7 +45,7 @@ impl ChatGPT {
         }
     }
 
-    fn create_default_headers(session: SessionToken) -> HeaderMap {
+    fn create_default_headers(token: BearerToken) -> HeaderMap {
         let mut headers = HeaderMap::new();
 
         headers.insert(
@@ -63,15 +66,18 @@ impl ChatGPT {
 
         headers.insert(
             header::AUTHORIZATION,
-            HeaderValue::from_str(session.bearer().as_str()).unwrap(),
+            HeaderValue::from_str(&token).unwrap(),
         );
 
         headers
     }
 }
 
-impl ChatGPTApi for ChatGPT {
-    fn ask(self, question: &str) -> Result<Response> {
+#[async_trait]
+impl ChatGPTApi for ChatGPT {   
+    async fn ask(&self, question: &str) -> Result<Response> {
+        info!("Asking ChatGPT -- {}", question);
+
         let request = Request::new(question.to_string());
 
         let result = self
@@ -79,11 +85,15 @@ impl ChatGPTApi for ChatGPT {
             .post(Self::API_BASE)
             .json(&request)
             .send()
-            .map_err(|e| ApiError("got an error from ChatGPT api. try again later".to_owned()))?;
+            .await
+            .map_err(|_e| ApiError("got an error from ChatGPT api. try again later".to_owned()))?;
 
         let text = result
             .text()
-            .map_err(|e| ApiError("failed to get result text from response".to_owned()))?;
+            .await
+            .map_err(|_e| ApiError("could not parse ChatGPT response to text".to_owned()))?;
+
+        info!("Response from ChatGPT -- {}", text);
 
         let messages: Vec<Response> = text
             .lines()
