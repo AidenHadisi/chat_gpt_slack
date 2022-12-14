@@ -2,7 +2,7 @@
 
 A ChatGPT AI bot for Slack.
 
-## DISCLAIMER
+## DISCLAIMER: USE AT YOUR OWN RISK
 OpenAI has not yet released a public API for ChatGPT. This project calls the undocumented API using a manually obtained session token.  
 
 You must manually grab your session token from cookies and add it to this bot. Token must also be manually refreshed. The bot is subject to aggressive rate limititing and other restrictions.
